@@ -1,0 +1,3 @@
+com.alibaba.cloud.ai.toolcalling.baidumap.BaiDuMapAutoConfiguration
+com.alibaba.cloud.ai.toolcalling.baidusearch.BaiduSearchAutoConfiguration
+com.alibaba.cloud.ai.toolcalling.common.CommonToolCallAutoConfiguration

@@ -1,0 +1,141 @@
+spring:
+  application:
+    name: NexusMind
+  profiles:
+    active: local
+  rabbitmq:
+    host: 8.153.84.186
+    port: 5672
+    username: rabbitmq
+    password: abc123
+    listener:
+      simple:
+        acknowledge-mode: manual
+    cache:
+      connection:
+        mode: channel
+    dynamic: true
+
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+
+  ai:
+    dashscope:
+      api-key: ${DASH_SCOPE_API_KEY}
+      chat:
+        options:
+            model: qwen-max-latest
+      embedding:
+        enabled: true
+        options:
+          model: text-embedding-v4
+
+    openai:
+      api-key: ${OPENAI_HK_KEY}
+      base-url: https://api.openai-hk.com
+
+    ollama:
+      base-url: http://localhost:11434/
+      chat:
+        model: llama3.2:latest
+
+    alibaba:
+      toolcalling:
+        baidu:
+          search:
+            enabled: true
+          map:
+            enabled: true
+            api-key: ${BAIDU_MAP_API_KEY_SERVER}
+    mcp:
+      client:
+        stdio:
+          servers-configuration: classpath:mcp-servers.json
+
+  # 基于hikari多路复用与双数据库源配置
+  datasource:
+    mysql:
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      url: jdbc:mysql://localhost:3306/nexusmind
+      username: root
+      password: 123456
+      hikari:
+        maximum-pool-size: 15
+        minimum-idle: 5
+
+    postgresql:
+      url: jdbc:postgresql://47.98.177.153:5432/nexusmind?ssl=true&&sslmode=verify-full&sslrootcert=E:/SSL/postgresql_ssl/SSL/root.crt
+      username: mrdotxin
+      password: Sit@210411
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        maximum-pool-size: 15
+        minimum-idle: 5
+
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+server:
+  address: 0.0.0.0
+  port: 8502
+  servlet:
+    context-path: /api
+    session:
+      cookie:
+        max-age: 2592000
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: false
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      logic-delete-field: isDelete # 全局逻辑删除的实体字段名
+      logic-delete-value: 1 # 逻辑已删除值（默认为 1）
+      logic-not-delete-value: 0 # 逻辑未删除值（默认为 0）
+
+logging:
+  level:
+    com.mrdotxin.nexusmind.mapper: DEBUG
+    com.mrdotxin.nexusmind.mapper.postgresql: DEBUG
+    org.mybatis: DEBUG
+
+knife4j:
+  enable: true
+  description: "类似manus的ai智能体 采用ReAct模式, 自主构建RAG知识库, 基于PgVector实现向量存储, 能够做到自主规划, Tool Calling, MCP Server & Client"
+  setting:
+    enable-filter-multipart-api-method-type: POST
+    enable-filter-multipart-apis: true
+    enable-open-api: true
+    enable-request-cache: true
+userTextAdvise: | 
+    If you already know all the relative info, just reasoning and out put or else you can :
+    Check if the answer exists in the provided context ( ---------------------\n\n---------------------\n{question_answer_context}\n---------------------\n\n)
+    If not found or not enough, determine if any available tools could potentially answer it
+    3a. If tools exist: Proceed to use them for research
+    3b. If no relevant tools exist: State 'I cannot answer this question'
+    When using tools: Search → Analyze → Synthesize. Never treat raw search results as final answers, and you should list the url of content from which you conclude the answer.
+  
+    Never invent answers outside these parameters
+
+toolCallingAdvise: |
+  Please share the specific answer derived from tool invocation in my last query, including:
+    The exact query terms used in the web search (if applicable);
+    Key data points extracted (e.g., date, numerical values, source URL);
+    How the retrieved information addresses the original question.
+
+maxAllowedContentLength: 10000
+
+email:
+  qq:
+    smtpHost: smtp.qq.com
+    smtpPort: 465
+    from: 3099856626@qq.com
+    password: ${QMAIL_AUTHORIZE_CODE}
+
+
+limit:
+    img: 30

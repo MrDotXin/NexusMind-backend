@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "amap-maps": {
+      "command": "npx.cmd",
+      "args": [
+        "-y",
+        "@amap/amap-maps-mcp-server"
+      ],
+      "env": {
+        "AMAP_MAPS_API_KEY": "2b10630ab97d23f9c60c382a89de801e"
+      }
+    },
+    "playwright": {
+      "command": "npx.cmd",
+      "args": ["-y", "@executeautomation/playwright-mcp-server"]
+    }
+  }
+}
