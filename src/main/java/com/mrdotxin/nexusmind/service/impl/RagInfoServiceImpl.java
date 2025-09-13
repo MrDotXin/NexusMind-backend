@@ -28,6 +28,7 @@ import com.mrdotxin.nexusmind.mapper.mysql.RagInfoMapper;
 import com.mrdotxin.nexusmind.upload.FileManager;
 import com.mrdotxin.nexusmind.utils.SqlUtils;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.ibatis.transaction.Transaction;
 import org.springframework.ai.document.Document;
@@ -47,6 +48,7 @@ import java.util.Objects;
 /**
  *
 */
+@Slf4j
 @Service
 public class RagInfoServiceImpl extends ServiceImpl<RagInfoMapper, RagInfo>
     implements RagInfoService{
@@ -99,9 +101,9 @@ public class RagInfoServiceImpl extends ServiceImpl<RagInfoMapper, RagInfo>
         queryWrapper.eq(StrUtil.isNotBlank(category), "category", category);
 
         if (ObjectUtil.isNotNull(userId) && userId > 0) {
-            queryWrapper.eq("userId", userId)
-                    .or()
-                    .inSql("id", "select ragId from userRagSubscription where userId = " + userId);
+            queryWrapper.and(q -> q.eq("userId", userId)
+                    .or().inSql("id", "select ragId from userRagSubscription where userId = " + userId)
+            );
         }
 
         // 标签查询
@@ -122,7 +124,7 @@ public class RagInfoServiceImpl extends ServiceImpl<RagInfoMapper, RagInfo>
         if (StrUtil.isNotBlank(sortField)) {
             SqlUtils.orderBy(queryWrapper, sortField, sortOrder);
         }
-
+        
         return queryWrapper;
     }
 

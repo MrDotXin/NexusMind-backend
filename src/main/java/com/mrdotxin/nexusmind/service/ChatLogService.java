@@ -27,10 +27,9 @@ public interface ChatLogService extends IService<ChatLog> {
     /**
      *
      * @param sessionId
-     * @param lastN
      * @return
      */
-    List<Message> getMessageList(String sessionId, int lastN);
+    List<Message> getMessageList(String sessionId);
 
     /**
      *
@@ -40,4 +39,6 @@ public interface ChatLogService extends IService<ChatLog> {
 
     QueryWrapper<ChatLog> getQueryWrapper(ChatLogQueryRequest chatLogQueryRequest);
 
+
+    List<String> listAllSessionIds();
 }

@@ -17,9 +17,13 @@ public class GolemAddRequest implements Serializable {
 
     private List<String> tags;
 
+    private List<String> rags;
+
+    private String prologue;
+
     private String category;
 
-    private String avatar;
+    private Boolean isPublic;
 
     @Serial
     private static final long serialVersionUID = 1L;

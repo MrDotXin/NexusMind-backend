@@ -90,7 +90,7 @@ public class RagInfo implements Serializable {
      * 知识库的公开状态
      */
     @TableField(value = "isPublic")
-    private boolean isPublic;
+    private Boolean isPublic;
 
     /**
      * 创建时间

@@ -25,7 +25,7 @@ spring:
       api-key: ${DASH_SCOPE_API_KEY}
       chat:
         options:
-            model: qwen-max-latest
+            model: qwen-max
       embedding:
         enabled: true
         options:
@@ -112,6 +112,7 @@ knife4j:
     enable-open-api: true
     enable-request-cache: true
 userTextAdvise: | 
+    {query}\n\n
     If you already know all the relative info, just reasoning and out put or else you can :
     Check if the answer exists in the provided context ( ---------------------\n\n---------------------\n{question_answer_context}\n---------------------\n\n)
     If not found or not enough, determine if any available tools could potentially answer it
@@ -139,3 +140,4 @@ email:
 
 limit:
     img: 30
+

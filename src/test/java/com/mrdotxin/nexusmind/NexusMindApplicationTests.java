@@ -1,14 +1,10 @@
 package com.mrdotxin.nexusmind;
 
-import com.alibaba.cloud.ai.toolcalling.baidumap.BaiDuMapAutoConfiguration;
 import com.alibaba.cloud.ai.toolcalling.baidusearch.BaiduSearchService;
 import com.mrdotxin.nexusmind.ai.advisor.CustomLogAdvisor;
-import com.mrdotxin.nexusmind.ai.agent.ManusAgent;
-import com.mrdotxin.nexusmind.ai.agent.ManusAgentFactory;
 import com.mrdotxin.nexusmind.ai.tool.component.PDFGenerationTool;
 import com.mrdotxin.nexusmind.ai.tool.component.SearchTools;
 import com.mrdotxin.nexusmind.model.entity.ChatLog;
-import com.mrdotxin.nexusmind.model.entity.Golem;
 import com.mrdotxin.nexusmind.service.ChatLogService;
 import com.mrdotxin.nexusmind.utils.ChatMessageUtil;
 import jakarta.annotation.Resource;
@@ -16,9 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
-import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
-import org.springframework.ai.chat.memory.InMemoryChatMemory;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -69,10 +63,6 @@ class NexusMindApplicationTests {
     void tryMemorableChat() {
 
         ChatClient build = ChatClient.builder(deepseekChatModel)
-                .defaultSystem("你是一个资深JOJO厨, 你最专业的就是比较不同替身的战力排行并从各种刁钻角度进行战力比对")
-                .defaultAdvisors(
-                        new MessageChatMemoryAdvisor(new InMemoryChatMemory())
-                )
                 .build();
         String content = build.prompt().user("替身Gold Experience Requiem 和 替身Wonder Of U哪一个更胜一筹，为什么？").call().content();
         System.out.println(content);
@@ -87,7 +77,6 @@ class NexusMindApplicationTests {
         ChatClient build = ChatClient.builder(deepseekChatModel)
                 .defaultSystem("你是一个资深JOJO厨, 你最专业的就是比较不同替身的战力排行并从各种刁钻角度进行战力比对")
                 .defaultAdvisors(
-                        new MessageChatMemoryAdvisor(new InMemoryChatMemory()),
                         new CustomLogAdvisor()
                 )
                 .build();
@@ -168,9 +157,9 @@ class NexusMindApplicationTests {
     void TestSearchFromVectorStore() {
         VectorStore vectorStore = getVectorStore();
         SearchRequest searchRequest = SearchRequest.builder()
-                .query("Kryo")
+                .query("怎么挽回爱情呢?")
                 .topK(2)
-                .similarityThreshold(0.7)
+                .similarityThreshold(0.3)
                 .build();
         List<Document> documents = vectorStore.similaritySearch(searchRequest);
         System.out.println(documents);
@@ -227,15 +216,6 @@ class NexusMindApplicationTests {
         BaiduSearchService.Response resp = baiduSearchService.apply(new BaiduSearchService.Request("上海今日天气", 10));
         log.info("results: {}", resp.results());
     }
-
-    @Resource
-    private ManusAgentFactory manusAgentFactory;
-
-    @Test
-    void testManus() throws IOException {
-        manusAgentFactory.newManusAgent().runStream("帮我看看codeforces最近的几个比赛活动还有信息, 整理成列表发到我的个人邮箱2548148376@qq.com, 如果你需要登录，请询问我账号密码", 5L);
-    }
-
 
     @Test
     void testPdf() {

@@ -9,7 +9,7 @@ import com.mrdotxin.nexusmind.common.ErrorCode;
 import com.mrdotxin.nexusmind.exception.BusinessException;
 import com.mrdotxin.nexusmind.model.entity.ChatLog;
 import org.springframework.ai.chat.messages.*;
-import org.springframework.ai.model.Media;
+import org.springframework.ai.content.Media;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -21,6 +21,31 @@ public class ChatMessageUtil {
     private static final String TOOL_CALL_LIST_KEY = "toolCalls";
     private static final String RESPONSE_LIST_KEY = "responses";
     private static final String META_KEY = "meta";
+
+    static public AssistantMessage mergeAssistantMessages(AssistantMessage message1, AssistantMessage message2) {
+        String mergedText = message1.getText() + "\n" + message2.getText();
+
+        List<AssistantMessage.ToolCall> mergedToolCalls = new ArrayList<>(message1.getToolCalls());
+        mergedToolCalls.addAll(message2.getToolCalls());
+
+        Map<String, Object> mergedMetadata = new HashMap<>(message1.getMetadata());
+        mergedMetadata.putAll(message2.getMetadata());
+
+        List<Media> mergedMedia = new ArrayList<>(message1.getMedia());
+        mergedMedia.addAll(message2.getMedia());
+
+        return new AssistantMessage(mergedText, mergedMetadata, mergedToolCalls, mergedMedia);
+    }
+
+    public static ToolResponseMessage mergeToolResponseMessages(ToolResponseMessage message1, ToolResponseMessage message2) {
+        List<ToolResponseMessage.ToolResponse> mergedResponses = new ArrayList<>(message1.getResponses());
+        mergedResponses.addAll(message2.getResponses());
+
+        Map<String, Object> mergedMetadata = new HashMap<>(message1.getMetadata());
+        mergedMetadata.putAll(message2.getMetadata());
+
+        return new ToolResponseMessage(mergedResponses, mergedMetadata);
+    }
 
     public static Message fromChatLog(ChatLog chatLog) {
         String type = chatLog.getMessageType();
@@ -119,7 +144,10 @@ public class ChatMessageUtil {
             mediaList = TypeForceConverter.convert(meta.get(MEDIA_LIST_KEY), new TypeReference<List<Media>>() {});
         }
 
-        return new UserMessage(chatLog.getText(), mediaList, metaData);
+        return new UserMessage.Builder().text(chatLog.getText())
+                .media(mediaList.toArray(Media[]::new))
+                .metadata(metaData)
+                .build();
     }
 
     private static SystemMessage toSystemMessage(ChatLog chatLog) {

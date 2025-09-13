@@ -10,10 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration
-@EnableAutoConfiguration(exclude = {
-        org.springframework.ai.autoconfigure.vectorstore.pgvector.PgVectorStoreAutoConfiguration.class,
-        org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration.class
-})
+@EnableAutoConfiguration
 public class PgVectorStoreConfig {
 
     @Bean(name = "pgVectorStore")

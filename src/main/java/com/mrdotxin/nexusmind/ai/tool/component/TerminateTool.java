@@ -1,17 +1,15 @@
 package com.mrdotxin.nexusmind.ai.tool.component;
 
 import com.mrdotxin.nexusmind.ai.agent.BaseAgent;
-import com.mrdotxin.nexusmind.ai.agent.ManusAgent;
 import com.mrdotxin.nexusmind.ai.enums.AgentStatusEnum;
 import org.springframework.ai.tool.annotation.Tool;
-import org.springframework.stereotype.Component;
 
 public class TerminateTool {
 
-    private final BaseAgent manusAgent;
+    private final BaseAgent baseAgent;
 
-    public TerminateTool(BaseAgent manusAgent) {
-        this.manusAgent = manusAgent;
+    public TerminateTool(BaseAgent baseAgent) {
+        this.baseAgent = baseAgent;
     }
 
     @Tool(description = """  
@@ -19,8 +17,7 @@ public class TerminateTool {
             "When you have finished all the tasks, call this tool to end the work.
             """)
     public String doTerminate() {
-        manusAgent.setStatus(AgentStatusEnum.FINISHED);
-        manusAgent.setCurrentStep(0);
+        baseAgent.terminate();
         return "任务结束";
     }
 }

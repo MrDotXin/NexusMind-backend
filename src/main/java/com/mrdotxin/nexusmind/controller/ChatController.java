@@ -3,28 +3,35 @@ package com.mrdotxin.nexusmind.controller;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
 import com.mrdotxin.nexusmind.ai.advisor.CustomLogAdvisor;
-import com.mrdotxin.nexusmind.ai.agent.ManusAgent;
-import com.mrdotxin.nexusmind.ai.agent.ManusAgentFactory;
+import com.mrdotxin.nexusmind.ai.agent.ToolCallStreamChatAgent;
+import com.mrdotxin.nexusmind.ai.persistence.ChatMessageStore;
+import com.mrdotxin.nexusmind.ai.tool.ToolCenter;
 import com.mrdotxin.nexusmind.common.BaseResponse;
 import com.mrdotxin.nexusmind.common.ErrorCode;
 import com.mrdotxin.nexusmind.common.ResultUtils;
-import com.mrdotxin.nexusmind.constant.GolemConstant;
+import com.mrdotxin.nexusmind.component.ChatModelSelector;
+import com.mrdotxin.nexusmind.component.enums.ChatModelEnum;
 import com.mrdotxin.nexusmind.exception.ThrowUtils;
 import com.mrdotxin.nexusmind.model.dto.chat.DoChatRequest;
 import com.mrdotxin.nexusmind.model.dto.chat.DoChatResponse;
 import com.mrdotxin.nexusmind.model.entity.ChatSession;
 import com.mrdotxin.nexusmind.model.entity.Golem;
 import com.mrdotxin.nexusmind.model.entity.User;
-import com.mrdotxin.nexusmind.service.*;
+import com.mrdotxin.nexusmind.service.ChatService;
+import com.mrdotxin.nexusmind.service.ChatSessionService;
+import com.mrdotxin.nexusmind.service.GolemService;
+import com.mrdotxin.nexusmind.service.UserService;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.advisor.RetrievalAugmentationAdvisor;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
-import org.springframework.ai.rag.retrieval.search.VectorStoreDocumentRetriever;
-import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,7 +40,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
-import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -58,6 +64,8 @@ public class ChatController {
     @Qualifier("pgVectorStore")
     private VectorStore pgVectorStore;
 
+    @Resource
+    private ChatModelSelector chatModelSelector;
 
     @Value("${maxAllowedContentLength}")
     private Long maxAllowedContentLength;
@@ -66,7 +74,7 @@ public class ChatController {
     public BaseResponse<DoChatResponse> doGolemChat(@PathVariable("golemId") Long golemId, @RequestBody DoChatRequest doChatRequest, HttpServletRequest httpServletRequest) {
         ThrowUtils.throwIf(ObjectUtil.isNull(doChatRequest), ErrorCode.PARAMS_ERROR, "请求体为空!");
 
-        Golem golem = golemService.getById(golemId);
+        Golem golem = golemService.getById(golemId);    
         User user = userService.getLoginUser(httpServletRequest);
 
         validatorChatRequestParam(golem, user, doChatRequest);
@@ -91,52 +99,6 @@ public class ChatController {
         return chatService.doChatAsync(golem, doChatRequest, user);
     }
 
-    @Resource
-    private ManusAgentFactory manusAgentFactory;
-
-
-    @PostMapping(value = "manus/async", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter doManusAgent(@RequestBody DoChatRequest doChatRequest, HttpServletRequest httpServletRequest) throws IOException {
-        ThrowUtils.throwIf(ObjectUtil.isNull(doChatRequest), ErrorCode.PARAMS_ERROR);
-
-        String content = doChatRequest.getContent();
-        ThrowUtils.throwIf(content.isEmpty(), ErrorCode.PARAMS_ERROR, "内容为空");
-        ThrowUtils.throwIf(content.length() > maxAllowedContentLength, ErrorCode.PARAMS_ERROR, "超过单次最大内容");
-
-        User user = userService.getLoginUser(httpServletRequest);
-        Golem golem = golemService.getById(GolemConstant.DEFAULT_MANUS_AGENT_TABLE_ID);
-        ChatSession chatSession = chatService.getOrNewChatSession(user, golem, doChatRequest.getContent(), doChatRequest.getSessionId());
-
-        SearchRequest searchRequest = golemService.buildSearchRequest(
-                        golem,
-                        doChatRequest.getContent(),
-                        doChatRequest.getExtraRags(),
-                        user
-                );
-
-        ManusAgent manusAgent = manusAgentFactory.builder()
-                .advisor(new CustomLogAdvisor())
-                .advisor(RetrievalAugmentationAdvisor.builder()
-                        .documentRetriever(
-                                new VectorStoreDocumentRetriever(
-                                        pgVectorStore,
-                                        searchRequest.getSimilarityThreshold(),
-                                        searchRequest.getTopK(),
-                                        searchRequest::getFilterExpression
-                                )
-                        ).
-                        build()
-                )
-                .build();
-
-        SseEmitter sseEmitter = manusAgent.runStream(content, chatSession.getId());
-
-        sseEmitter.send(ResultUtils.success("SessionId: " + chatSession.getId()));
-
-        return sseEmitter;
-    }
-
-
     private void validatorChatRequestParam(Golem golem, User user, DoChatRequest doChatRequest) {
         ThrowUtils.throwIf(ObjectUtil.isNull(golem), ErrorCode.OPERATION_ERROR, "请求的智能体不存在!");
 
@@ -145,11 +107,10 @@ public class ChatController {
 
         ThrowUtils.throwIf(ObjectUtil.isNull(user), ErrorCode.NOT_LOGIN_ERROR);
 
-        if (ObjectUtil.isNull(doChatRequest.getSessionId()) && doChatRequest.getSessionId() > 0) {
+        if (ObjectUtil.isNotNull(doChatRequest.getSessionId()) && doChatRequest.getSessionId() > 0) {
             ChatSession chatSession = chatSessionService.getById(doChatRequest.getSessionId());
             ThrowUtils.throwIf(ObjectUtil.isNull(chatSession), ErrorCode.PARAMS_ERROR, "不存在的会话!");
             ThrowUtils.throwIf(!golem.getId().equals(chatSession.getGolemId()), ErrorCode.PARAMS_ERROR, "不存在的会话!");
-            userService.validateIsAdminOrOwner(user, chatSession.getUserId());
         }
     }
 
@@ -218,4 +179,40 @@ public class ChatController {
             .delayElements(Duration.ofMillis(1000)); // 每条消息延迟100ms
     }
 
+    @Resource
+    private ToolCenter toolCenter;
+
+    @Resource
+    private ChatMessageStore chatMessageStore;
+    @PostMapping("/mock/test/chat/stream")
+    public SseEmitter mockChatStream(String text, HttpServletRequest httpServletRequest) {
+        Golem golem = golemService.getById(2L);
+
+        User user = userService.getLoginUser(httpServletRequest);
+        ChatSession chatSession = chatService.newChatSession(user, golem, text);
+
+        ChatModel chatModel = chatModelSelector.select(ChatModelEnum.QWEN.getValue());
+        ToolCallStreamChatAgent.Builder chatBuilder = new ToolCallStreamChatAgent.Builder(
+                chatModel,
+                golem
+        );
+
+        MessageWindowChatMemory chatMemory = MessageWindowChatMemory.builder()
+                .chatMemoryRepository(chatMessageStore)
+                        .maxMessages(20)
+                                .build();
+
+
+        ToolCallbackProvider tools = toolCenter.getAllTools();
+
+        CustomLogAdvisor customLogAdvisor = new CustomLogAdvisor();
+
+        ToolCallStreamChatAgent agent = chatBuilder
+                .chatMemory(chatMemory, chatSession.getId().toString())
+                .advisor(customLogAdvisor)
+                .toolCalls(tools)
+                .build();
+
+        return agent.doChatStream(text);
+    }
 }

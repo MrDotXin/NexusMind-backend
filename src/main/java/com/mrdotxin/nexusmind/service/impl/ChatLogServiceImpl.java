@@ -62,6 +62,11 @@ public class ChatLogServiceImpl extends ServiceImpl<ChatLogMapper, ChatLog>
     }
 
     @Override
+    public List<String> listAllSessionIds() {
+        return this.baseMapper.getIds();
+    }
+
+    @Override
     public void addMessageList(String sessionId, List<Message> messageList) {
         Long chatId = Long.valueOf(sessionId);
 
@@ -92,15 +97,12 @@ public class ChatLogServiceImpl extends ServiceImpl<ChatLogMapper, ChatLog>
     }
 
     @Override
-    public List<Message> getMessageList(String sessionId, int lastN) {
+    public List<Message> getMessageList(String sessionId) {
         Long chatId = Long.valueOf(sessionId);
 
         QueryWrapper<ChatLog> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("sessionId", chatId);
         queryWrapper.orderByAsc("sequenceId");
-        if (lastN > 0) {
-            queryWrapper.last("LIMIT " + lastN);
-        }
 
         List<ChatLog> chatLogs = this.list(queryWrapper);
         return chatLogs.stream().map(ChatMessageUtil::fromChatLog).toList();

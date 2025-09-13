@@ -35,6 +35,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
@@ -61,6 +62,12 @@ public class GolemController {
         Golem golem = new Golem();
         BeanUtils.copyProperties(request, golem);
 
+        golem.setRags(
+                request.getRags().stream()
+                        .map(Long::valueOf)
+                        .collect(Collectors.toList())
+        );
+
         User user = userService.getLoginUser(httpServletRequest);
         golem.setUserId(user.getId());
 
@@ -70,17 +77,23 @@ public class GolemController {
     }
 
     @PostMapping("/delete")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
-    public BaseResponse<Boolean> deleteGolem(@RequestBody DeleteRequest deleteRequest) {
+        public BaseResponse<Boolean> deleteGolem(@RequestBody DeleteRequest deleteRequest) {
         boolean b = golemService.removeById(deleteRequest.getId());
         return ResultUtils.success(b);
     }
 
     @PostMapping("/update")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Boolean> updateGolem(@RequestBody GolemUpdateRequest request) {
         Golem golem = new Golem();
         BeanUtils.copyProperties(request, golem);
+
+        golem.setIsPublic(request.getIsPublic());
+        golem.setRags(
+        request.getRags().stream()
+                .map(Long::valueOf)
+                .collect(Collectors.toList())
+        );
+
         boolean result = golemService.updateById(golem);
         return ResultUtils.success(result);
     }

@@ -86,7 +86,7 @@ public class Golem implements Serializable {
      * 公开状态
      */
     @TableField(value = "isPublic")
-    private boolean isPublic;
+    private Boolean isPublic;
 
     /**
      * 开场白

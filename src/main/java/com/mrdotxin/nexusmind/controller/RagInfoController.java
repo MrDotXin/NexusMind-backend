@@ -2,6 +2,7 @@ package com.mrdotxin.nexusmind.controller;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.ObjectUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mrdotxin.nexusmind.annotation.AuthCheck;
 import com.mrdotxin.nexusmind.common.BaseResponse;
@@ -104,6 +105,14 @@ public class RagInfoController {
         ThrowUtils.throwIf(ObjectUtil.isNull(ragInfo), ErrorCode.PARAMS_ERROR, "无法找到相关知识库!");
 
         return ResultUtils.success(ragInfo);
+    }
+
+    @PostMapping("/rag/batches/id")
+    public BaseResponse<List<RagInfo>> getRagInfoBatchById(@RequestBody List<Long> ragId) {
+        List<RagInfo> list = ragInfoService.lambdaQuery()
+                .in(RagInfo::getId, ragId).list();
+
+        return ResultUtils.success(list);
     }
 
     @PostMapping("/rag/vo/{ragId}")

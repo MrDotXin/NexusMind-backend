@@ -75,22 +75,26 @@ public class MysqlMybatisConfig {
         return mybatisSqlSessionFactoryBean.getObject();
     }
 
+    @Primary
     @Bean(name = "mysqlSqlSessionTemplate")
     public SqlSessionTemplate sqlSessionTemplate(SqlSessionFactory sqlSessionFactory) {
         return new SqlSessionTemplate(sqlSessionFactory);
     }
 
+    @Primary
     @Bean(name = "mysqlTransactionManager")
     public PlatformTransactionManager transactionManager(DataSource dataSource) {
         return new DataSourceTransactionManager(dataSource);
     }
 
+    @Primary
     @Bean(name = "mysqlJdbcTemplate")
     public JdbcTemplate mysqlJdbcTemplate(
             @Qualifier("mysqlDataSource") DataSource mysqlDataSource) {
         return new JdbcTemplate(mysqlDataSource);
     }
 
+    @Primary
     @Bean(name = "mysqlTransactionTemplate")
     public TransactionTemplate mysqlTransactionTemplate(@Qualifier("mysqlTransactionManager") PlatformTransactionManager transactionManager) {
         return new TransactionTemplate(transactionManager);

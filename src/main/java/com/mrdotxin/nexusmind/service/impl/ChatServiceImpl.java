@@ -3,45 +3,43 @@ package com.mrdotxin.nexusmind.service.impl;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
 import com.mrdotxin.nexusmind.ai.advisor.CustomLogAdvisor;
+import com.mrdotxin.nexusmind.ai.agent.BaseAgent;
+import com.mrdotxin.nexusmind.ai.agent.ToolCallStreamChatAgent;
 import com.mrdotxin.nexusmind.ai.persistence.ChatMessageStore;
 import com.mrdotxin.nexusmind.ai.tool.ToolCenter;
 import com.mrdotxin.nexusmind.common.ErrorCode;
 import com.mrdotxin.nexusmind.common.ResultUtils;
 import com.mrdotxin.nexusmind.component.ChatModelSelector;
+import com.mrdotxin.nexusmind.component.enums.ChatModelEnum;
 import com.mrdotxin.nexusmind.constant.ChatConstant;
 import com.mrdotxin.nexusmind.exception.ThrowUtils;
 import com.mrdotxin.nexusmind.model.dto.chat.DoChatRequest;
 import com.mrdotxin.nexusmind.model.entity.ChatSession;
 import com.mrdotxin.nexusmind.model.entity.Golem;
 import com.mrdotxin.nexusmind.model.entity.User;
-import com.mrdotxin.nexusmind.service.ChatService;
-import com.mrdotxin.nexusmind.service.ChatSessionService;
-import com.mrdotxin.nexusmind.service.GolemService;
-import com.mrdotxin.nexusmind.service.UserService;
+import com.mrdotxin.nexusmind.service.*;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
-import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import reactor.core.publisher.Flux;
-import reactor.core.scheduler.Schedulers;
 
-import javax.validation.constraints.Max;
 import java.io.IOException;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 @Service
@@ -65,7 +63,6 @@ public class ChatServiceImpl implements ChatService {
     @Qualifier("pgVectorStore")
     private VectorStore vectorStore;
 
-
     @Value("${userTextAdvise}")
     private String userTextAdvise;
 
@@ -74,9 +71,6 @@ public class ChatServiceImpl implements ChatService {
 
     @Value("${maxAllowedContentLength}")
     private Long maxAllowedContentLength;
-
-    @Resource
-    private ToolCenter allTools;
 
     @Resource
     private ToolCallbackProvider mcpCallbackProvider;
@@ -116,54 +110,51 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public SseEmitter doChatAsync(Golem golem, DoChatRequest doChatRequest, User user) {
-        SseEmitter sseEmitter = new SseEmitter(300000L);
+        return transactionTemplate.execute( transactionStatus -> {
+                    if (ObjectUtil.isNull(doChatRequest.getSessionId()) || doChatRequest.getSessionId() == 0) {
+                        ChatSession newedChatSession = newChatSession(user, golem, doChatRequest.getContent());
+                        doChatRequest.setSessionId(newedChatSession.getId());
 
-        String content = getCall(golem, doChatRequest, user)
-                .user(doChatRequest.getContent() + "\n" + toolCallingAdvise)
-                .call()
-                .content();
+                        if (StrUtil.isNotBlank(golem.getPrologue())) {
+                            chatMessageStore.add(doChatRequest.getSessionId(), buildAssistantMessageWithPrologue(golem.getPrologue()));
+                        }
+                    }
 
-        CompletableFuture.runAsync(() -> {
-            try {
-                sseEmitter.send(ResultUtils.success("SessionId: " + doChatRequest.getSessionId()));
-                sseEmitter.send(ResultUtils.success(content));
-
-                sseEmitter.complete();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        sseEmitter.onTimeout(() -> {
-            log.info("SSE connect completed");
-            try {
-                sseEmitter.send(ResultUtils.success("思考已停止, 超时"));
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        return sseEmitter;
+                     return buildChatAgent(golem, doChatRequest, user).doChatStream(doChatRequest.getContent());
+                }
+        );
     }
 
     private ChatClient.ChatClientRequestSpec getCall(Golem golem, DoChatRequest doChatRequest, User user) {
         ChatClient client = buildChatClient(golem, doChatRequest, user);
 
         return client.prompt()
-                .tools(toolCenter.getAllTools())
+                .toolCallbacks(toolCenter.getAllTools())
                 .advisors(advisorSpec ->
-                        advisorSpec.param(ChatConstant.CHAT_MEMORY_CONVERSATION_ID, doChatRequest.getSessionId())
-                                .param(ChatConstant.CHAT_MEMORY_RESPONSE_SIZE, 20)
+                        advisorSpec.param(ChatMemory.CONVERSATION_ID, doChatRequest.getSessionId())
                 );
     }
 
-    private ChatClient.ChatClientRequestSpec getStreamCall(Golem golem, DoChatRequest doChatRequest, User user) {
-        ChatClient client = buildChatClient(golem, doChatRequest, user);
+    private BaseAgent buildChatAgent(Golem golem, DoChatRequest doChatRequest, User user) {
+        String sessionId = doChatRequest.getSessionId().toString();
+        MessageWindowChatMemory chatMemory = MessageWindowChatMemory.builder()
+                .chatMemoryRepository(chatMessageStore)
+                        .maxMessages(20)
+                                .build();
 
-        return client.prompt()
-                .tools(toolCenter.getAllTools())
-                .advisors(advisorSpec ->
-                        advisorSpec.param(ChatConstant.CHAT_MEMORY_CONVERSATION_ID, doChatRequest.getSessionId())
-                                .param(ChatConstant.CHAT_MEMORY_RESPONSE_SIZE, 20)
-                );
+
+        ToolCallbackProvider tools = toolCenter.getAllTools();
+
+        CustomLogAdvisor customLogAdvisor = new CustomLogAdvisor();
+        QuestionAnswerAdvisor answerAdvisor = buildRAGAugmentAdvisor(golem, doChatRequest, user);
+
+        ChatModel chatModel = chatModelSelector.select(doChatRequest.getModel());
+        ToolCallStreamChatAgent.Builder chatBuilder = new ToolCallStreamChatAgent.Builder(chatModel, golem);
+
+        return chatBuilder.chatMemory(chatMemory, sessionId)
+                .advisor(customLogAdvisor, answerAdvisor)
+                .toolCalls(tools)
+                .build();
     }
 
     @Override
@@ -175,13 +166,32 @@ public class ChatServiceImpl implements ChatService {
             builder.defaultSystem(golem.getSystemPrompt());
         }
 
+        MessageWindowChatMemory chatMemory = MessageWindowChatMemory.builder()
+                        .chatMemoryRepository(chatMessageStore)
+                                .maxMessages(20)
+                                        .build();
+        CustomLogAdvisor myLoggerAdvisor = new CustomLogAdvisor();
+        MessageChatMemoryAdvisor messageChatMemoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
+        QuestionAnswerAdvisor questionAnswerAdvisor = QuestionAnswerAdvisor.builder(vectorStore)
+                .searchRequest(searchRequest)
+                .promptTemplate(new PromptTemplate(userTextAdvise))
+                .build();
+
          builder.defaultAdvisors(
-                        new CustomLogAdvisor(),
-                        new MessageChatMemoryAdvisor(chatMessageStore),
-                        new QuestionAnswerAdvisor(vectorStore, searchRequest, userTextAdvise)
+                        myLoggerAdvisor,
+                        messageChatMemoryAdvisor,
+                        questionAnswerAdvisor
                 );
 
         return builder.build();
+    }
+
+    public QuestionAnswerAdvisor buildRAGAugmentAdvisor(Golem golem, DoChatRequest doChatRequest, User user) {
+        SearchRequest searchRequest = golemService.buildSearchRequest(golem, doChatRequest.getContent(), doChatRequest.getExtraRags(), user);
+        return QuestionAnswerAdvisor.builder(vectorStore)
+                .searchRequest(searchRequest)
+                .promptTemplate(new PromptTemplate(userTextAdvise))
+                .build();
     }
 
     @Override
